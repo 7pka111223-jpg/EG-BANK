@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:," />
+<title>أداة استخراج بيانات الشيكات البنكية</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="app-header">
+  <div class="brand">
+    <span class="logo">🏦</span>
+    <div>
+      <h1>أداة استخراج بيانات الشيكات البنكية</h1>
+      <p class="sub">قراءة الشيكات الممسوحة ضوئيًا من ملف PDF واستخراج البيانات — تعمل بالكامل دون إنترنت</p>
+    </div>
+  </div>
+  <div id="engineStatus" class="engine-status" title="حالة محرّك التعرّف الضوئي">…</div>
+</header>
+
+<main>
+  <!-- STEP 1: upload + settings -->
+  <section class="card" id="uploadCard">
+    <h2><span class="step">1</span> اختيار ملف PDF للشيكات</h2>
+    <div id="dropZone" class="dropzone">
+      <input type="file" id="fileInput" accept="application/pdf" hidden />
+      <div class="dz-inner">
+        <div class="dz-icon">📄⬆️</div>
+        <p><strong>اسحب ملف PDF هنا</strong> أو اضغط للاختيار</p>
+        <p class="hint">يدعم ملفات تحتوي على عدد كبير من الشيكات (حتى 200 شيك وأكثر)</p>
+      </div>
+    </div>
+    <div id="pdfInfo" class="pdf-info hidden"></div>
+
+    <details class="settings">
+      <summary>⚙️ إعدادات متقدمة</summary>
+      <div class="settings-grid">
+        <label>عدد صفحات كل شيك
+          <select id="pagesPerCheque">
+            <option value="2" selected>صفحتان (وجه + ظهر)</option>
+            <option value="1">صفحة واحدة</option>
+          </select>
+        </label>
+        <label>صفحة الوجه (التي تحتوي البيانات)
+          <select id="facePosition">
+            <option value="first" selected>الصفحة الأولى من كل شيك</option>
+            <option value="second">الصفحة الثانية من كل شيك</option>
+          </select>
+        </label>
+        <label>لغة التعرّف
+          <select id="ocrLang">
+            <option value="ara" selected>عربي فقط (أسرع)</option>
+            <option value="ara+eng">عربي + إنجليزي (أرقام/لاتيني أدق)</option>
+          </select>
+        </label>
+        <label>دقة الصورة للتعرّف (عرض بالبكسل)
+          <select id="targetWidth">
+            <option value="1400">1400 (أسرع)</option>
+            <option value="1800" selected>1800 (موصى به)</option>
+            <option value="2400">2400 (أدق / أبطأ)</option>
+          </select>
+        </label>
+        <label>نمط تقسيم الصفحة (PSM)
+          <select id="psm">
+            <option value="3" selected>تلقائي (3)</option>
+            <option value="4">عمود نص (4)</option>
+            <option value="6">كتلة موحّدة (6)</option>
+            <option value="11">نص متفرق (11)</option>
+            <option value="12">نص متفرق + اتجاه (12)</option>
+          </select>
+        </label>
+        <label>عدد العمليات المتوازية
+          <select id="concurrency">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" id="preGray" checked /> تحويل لتدرّج رمادي</label>
+        <label class="chk"><input type="checkbox" id="preThresh" checked /> تحسين التباين (عتبة)</label>
+        <label class="chk"><input type="checkbox" id="preInvertAuto" checked /> كشف الخلفية الداكنة تلقائيًا</label>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button id="startBtn" class="btn primary" disabled>▶️ بدء استخراج البيانات</button>
+      <button id="resetBtn" class="btn ghost hidden">↺ ملف جديد</button>
+    </div>
+  </section>
+
+  <!-- STEP 2: progress -->
+  <section class="card hidden" id="progressCard">
+    <h2><span class="step">2</span> جاري المعالجة</h2>
+    <div class="progress-wrap">
+      <div class="progress"><div id="progressBar" class="progress-bar"></div></div>
+      <div id="progressText" class="progress-text">…</div>
+    </div>
+    <div class="actions">
+      <button id="pauseBtn" class="btn">⏸️ إيقاف مؤقت</button>
+      <button id="cancelBtn" class="btn danger">✖️ إلغاء</button>
+    </div>
+    <p class="hint">يمكن أن تستغرق المعالجة عدة دقائق للملفات الكبيرة. لا تُغلق الصفحة.</p>
+  </section>
+
+  <!-- STEP 3: results -->
+  <section class="card hidden" id="resultsCard">
+    <h2><span class="step">3</span> مراجعة وتصحيح البيانات</h2>
+    <div class="results-toolbar">
+      <div class="counts" id="counts"></div>
+      <div class="grow"></div>
+      <input type="search" id="searchBox" placeholder="بحث في النتائج…" />
+      <label class="chk"><input type="checkbox" id="onlyUnverified" /> غير المُدقّقة فقط</label>
+      <button id="exportCsvBtn" class="btn">⬇️ CSV</button>
+      <button id="exportXlsxBtn" class="btn primary">⬇️ Excel</button>
+    </div>
+    <p class="review-note">⚠️ التعرّف الآلي قد يخطئ — راجع الحقول وصحّحها قبل التصدير. اضغط على أي صف لعرض صورة الشيك مكبّرة وأداة إعادة القراءة.</p>
+    <div class="table-scroll">
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>صورة</th>
+            <th>اسم البنك</th>
+            <th>كود البنك</th>
+            <th>رقم الشيك</th>
+            <th>رقم الحساب</th>
+            <th>اسم الساحب</th>
+            <th>المبلغ</th>
+            <th>التاريخ</th>
+            <th>تدقيق</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<!-- Detail / correction modal -->
+<div id="detailModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="detailTitle">تفاصيل الشيك</h3>
+      <button id="closeModal" class="btn ghost">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-image">
+        <div class="img-tools">
+          <button id="reocrBtn" class="btn small" disabled>🔍 إعادة قراءة المنطقة المحددة</button>
+          <select id="reocrTarget" class="small">
+            <option value="">— الحقل المستهدف —</option>
+            <option value="bankName">اسم البنك</option>
+            <option value="bankCode">كود البنك</option>
+            <option value="chequeNo">رقم الشيك</option>
+            <option value="accountNo">رقم الحساب</option>
+            <option value="drawer">اسم الساحب</option>
+            <option value="amount">المبلغ</option>
+            <option value="date">التاريخ</option>
+          </select>
+          <label class="chk small"><input type="checkbox" id="reocrDigits" /> أرقام فقط</label>
+          <span class="hint">اسحب لتحديد منطقة على الصورة</span>
+        </div>
+        <div class="canvas-host">
+          <canvas id="detailCanvas"></canvas>
+          <canvas id="selectCanvas" class="select-layer"></canvas>
+        </div>
+      </div>
+      <div class="modal-fields">
+        <div class="field"><label>اسم البنك</label><input data-f="bankName" /></div>
+        <div class="field"><label>كود البنك (أول 4 أرقام)</label><input data-f="bankCode" /></div>
+        <div class="field"><label>رقم الشيك</label><input data-f="chequeNo" /></div>
+        <div class="field"><label>رقم الحساب</label><input data-f="accountNo" /></div>
+        <div class="field"><label>اسم الساحب</label><input data-f="drawer" /></div>
+        <div class="field"><label>المبلغ</label><input data-f="amount" /></div>
+        <div class="field"><label>التاريخ</label><input data-f="date" /></div>
+        <label class="chk"><input type="checkbox" data-f="verified" /> تم تدقيق هذا الشيك</label>
+        <details class="rawbox">
+          <summary>النص الخام للتعرّف الضوئي</summary>
+          <pre id="rawText"></pre>
+        </details>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="prevCheque" class="btn">◀ السابق</button>
+      <span id="detailPos" class="hint"></span>
+      <button id="nextCheque" class="btn">التالي ▶</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<!-- Vendored libraries (all offline, no CDN) -->
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/tesseract.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<!-- Embedded binary assets (base64) so OCR works even from file:// with no server -->
+<script src="vendor/embed/worker.js"></script>
+<script src="vendor/embed/core.js"></script>
+<script src="vendor/embed/ara.js"></script>
+<script src="vendor/embed/eng.js"></script>
+<script src="vendor/embed/pdfworker.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
